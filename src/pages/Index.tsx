@@ -8,8 +8,14 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 import Icon from '@/components/ui/icon';
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
 
 // Типы данных для мониторинга
 interface NetworkMetric {
@@ -59,6 +65,24 @@ interface FilterOptions {
   timeRange: string;
 }
 
+interface CustomAlert {
+  id: string;
+  name: string;
+  condition: string;
+  threshold: string;
+  enabled: boolean;
+  email?: string;
+}
+
+interface GeoLocation {
+  ip: string;
+  country: string;
+  city: string;
+  latitude: number;
+  longitude: number;
+  threat?: boolean;
+}
+
 const Index = () => {
   // Состояние для live данных
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -81,6 +105,23 @@ const Index = () => {
     timeRange: '1h'
   });
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Состояние для экспорта
+  const [isExporting, setIsExporting] = useState(false);
+  
+  // Состояние для кастомных алертов
+  const [customAlerts, setCustomAlerts] = useState<CustomAlert[]>([]);
+  const [newAlert, setNewAlert] = useState<CustomAlert>({
+    id: '',
+    name: '',
+    condition: 'bandwidth_high',
+    threshold: '80',
+    enabled: true,
+    email: ''
+  });
+  
+  // Состояние для геолокации
+  const [geoData, setGeoData] = useState<GeoLocation[]>([]);
 
   // Инициализация данных для графиков
   useEffect(() => {
@@ -122,6 +163,27 @@ const Index = () => {
       return packets.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
     };
     setPacketData(generatePackets());
+    
+    // Генерация геоданных
+    const generateGeoData = () => {
+      const locations = [
+        { ip: '8.8.8.8', country: 'USA', city: 'Mountain View', latitude: 37.4043, longitude: -122.0748, threat: false },
+        { ip: '1.1.1.1', country: 'USA', city: 'San Francisco', latitude: 37.7749, longitude: -122.4194, threat: false },
+        { ip: '94.142.241.111', country: 'Russia', city: 'Moscow', latitude: 55.7558, longitude: 37.6176, threat: true },
+        { ip: '185.220.101.32', country: 'Germany', city: 'Frankfurt', latitude: 50.1109, longitude: 8.6821, threat: false },
+        { ip: '103.224.182.251', country: 'Singapore', city: 'Singapore', latitude: 1.3521, longitude: 103.8198, threat: true },
+        { ip: '198.54.117.200', country: 'Canada', city: 'Toronto', latitude: 43.6532, longitude: -79.3832, threat: false }
+      ];
+      return locations;
+    };
+    setGeoData(generateGeoData());
+    
+    // Инициализация кастомных алертов
+    const initialAlerts: CustomAlert[] = [
+      { id: '1', name: 'High Bandwidth Alert', condition: 'bandwidth_high', threshold: '80', enabled: true, email: 'admin@company.com' },
+      { id: '2', name: 'Suspicious Traffic', condition: 'packet_anomaly', threshold: '100', enabled: true, email: 'security@company.com' }
+    ];
+    setCustomAlerts(initialAlerts);
   }, []);
 
   // Обновление времени и данных каждую секунду
@@ -189,6 +251,88 @@ const Index = () => {
     }
   };
 
+  // Функции экспорта
+  const exportToCSV = () => {
+    setIsExporting(true);
+    const csvData = packetData.map(packet => ({
+      timestamp: packet.timestamp,
+      source: packet.source,
+      destination: packet.destination,
+      protocol: packet.protocol,
+      size: packet.size,
+      flags: packet.flags.join(','),
+      payload: packet.payload
+    }));
+    
+    const csvContent = [
+      Object.keys(csvData[0]).join(','),
+      ...csvData.map(row => Object.values(row).join(','))
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `network_traffic_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setIsExporting(false);
+  };
+  
+  const exportToJSON = () => {
+    setIsExporting(true);
+    const exportData = {
+      export_date: new Date().toISOString(),
+      metrics: metrics,
+      protocols: protocols,
+      alerts: alerts,
+      traffic_data: trafficData,
+      packets: packetData,
+      geo_locations: geoData
+    };
+    
+    const jsonContent = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([jsonContent], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `network_monitor_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setIsExporting(false);
+  };
+  
+  // Функции для кастомных алертов
+  const addCustomAlert = () => {
+    const alert = {
+      ...newAlert,
+      id: Date.now().toString()
+    };
+    setCustomAlerts(prev => [...prev, alert]);
+    setNewAlert({
+      id: '',
+      name: '',
+      condition: 'bandwidth_high',
+      threshold: '80',
+      enabled: true,
+      email: ''
+    });
+  };
+  
+  const toggleAlert = (id: string) => {
+    setCustomAlerts(prev => prev.map(alert => 
+      alert.id === id ? { ...alert, enabled: !alert.enabled } : alert
+    ));
+  };
+  
+  const deleteAlert = (id: string) => {
+    setCustomAlerts(prev => prev.filter(alert => alert.id !== id));
+  };
+  
   // Фильтрация пакетов
   const filteredPackets = packetData.filter(packet => {
     if (filters.protocol !== 'all' && packet.protocol !== filters.protocol) return false;
@@ -236,12 +380,231 @@ const Index = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
-          <TabsTrigger value="packets">Packet Analysis</TabsTrigger>
-          <TabsTrigger value="filters">Filters & Search</TabsTrigger>
+          <TabsTrigger value="packets">Packets</TabsTrigger>
+          <TabsTrigger value="filters">Filters</TabsTrigger>
+          <TabsTrigger value="alerts">Alerts</TabsTrigger>
+          <TabsTrigger value="geomap">Geo Map</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="alerts" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Создание алерта */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Icon name="Plus" size={20} />
+                  <span>Create Custom Alert</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="alert-name">Alert Name</Label>
+                  <Input 
+                    id="alert-name"
+                    placeholder="e.g. High Bandwidth Warning"
+                    value={newAlert.name}
+                    onChange={(e) => setNewAlert(prev => ({ ...prev, name: e.target.value }))}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="alert-condition">Condition</Label>
+                  <Select value={newAlert.condition} onValueChange={(value) => setNewAlert(prev => ({ ...prev, condition: value }))}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="bandwidth_high">Bandwidth Usage High</SelectItem>
+                      <SelectItem value="latency_high">High Latency</SelectItem>
+                      <SelectItem value="packet_loss">Packet Loss</SelectItem>
+                      <SelectItem value="packet_anomaly">Packet Anomaly</SelectItem>
+                      <SelectItem value="connection_spike">Connection Spike</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="alert-threshold">Threshold</Label>
+                  <Input 
+                    id="alert-threshold"
+                    placeholder="e.g. 80"
+                    value={newAlert.threshold}
+                    onChange={(e) => setNewAlert(prev => ({ ...prev, threshold: e.target.value }))}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="alert-email">Email (optional)</Label>
+                  <Input 
+                    id="alert-email"
+                    type="email"
+                    placeholder="admin@company.com"
+                    value={newAlert.email}
+                    onChange={(e) => setNewAlert(prev => ({ ...prev, email: e.target.value }))}
+                  />
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <Switch 
+                    id="alert-enabled"
+                    checked={newAlert.enabled}
+                    onCheckedChange={(checked) => setNewAlert(prev => ({ ...prev, enabled: checked }))}
+                  />
+                  <Label htmlFor="alert-enabled">Enable alert</Label>
+                </div>
+                
+                <Button onClick={addCustomAlert} className="w-full" disabled={!newAlert.name}>
+                  <Icon name="Plus" size={16} className="mr-2" />
+                  Create Alert
+                </Button>
+              </CardContent>
+            </Card>
+            
+            {/* Список алертов */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Icon name="Bell" size={20} />
+                  <span>Active Alerts</span>
+                  <Badge variant="secondary">{customAlerts.filter(a => a.enabled).length}</Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-[400px]">
+                  <div className="space-y-3">
+                    {customAlerts.map((alert) => (
+                      <div key={alert.id} className="p-4 border rounded-lg">
+                        <div className="flex justify-between items-start mb-3">
+                          <div className="flex-1">
+                            <h4 className="font-medium">{alert.name}</h4>
+                            <p className="text-sm text-muted-foreground">
+                              {alert.condition.replace('_', ' ')} > {alert.threshold}
+                            </p>
+                            {alert.email && (
+                              <p className="text-xs text-muted-foreground font-mono">{alert.email}</p>
+                            )}
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Switch 
+                              checked={alert.enabled}
+                              onCheckedChange={() => toggleAlert(alert.id)}
+                              size="sm"
+                            />
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => deleteAlert(alert.id)}
+                            >
+                              <Icon name="Trash2" size={14} />
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <div className={`w-2 h-2 rounded-full ${alert.enabled ? 'bg-emerald-400' : 'bg-gray-400'}`} />
+                          <span className="text-xs text-muted-foreground">
+                            {alert.enabled ? 'Active' : 'Disabled'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="geomap" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Карта */}
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Icon name="Map" size={20} />
+                  <span>Geographic Traffic Distribution</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-[500px] rounded-lg overflow-hidden border">
+                  <MapContainer
+                    center={[40.7128, -74.0060]}
+                    zoom={2}
+                    style={{ height: '100%', width: '100%' }}
+                  >
+                    <TileLayer
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      attribution="&copy; OpenStreetMap contributors"
+                    />
+                    {geoData.map((location) => (
+                      <Marker key={location.ip} position={[location.latitude, location.longitude]}>
+                        <Popup>
+                          <div className="p-2">
+                            <div className="flex items-center space-x-2 mb-2">
+                              <Icon 
+                                name={location.threat ? "AlertTriangle" : "MapPin"} 
+                                size={16} 
+                                className={location.threat ? "text-red-500" : "text-blue-500"}
+                              />
+                              <span className="font-mono text-sm">{location.ip}</span>
+                              {location.threat && (
+                                <Badge variant="destructive" className="text-xs">Threat</Badge>
+                              )}
+                            </div>
+                            <p className="text-sm">{location.city}, {location.country}</p>
+                          </div>
+                        </Popup>
+                      </Marker>
+                    ))}
+                  </MapContainer>
+                </div>
+              </CardContent>
+            </Card>
+            
+            {/* Список локаций */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Icon name="Globe" size={20} />
+                  <span>IP Locations</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-[500px]">
+                  <div className="space-y-3">
+                    {geoData.map((location) => (
+                      <div key={location.ip} className="p-3 border rounded-lg">
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="font-mono text-sm">{location.ip}</div>
+                          {location.threat && (
+                            <Badge variant="destructive" className="text-xs">
+                              <Icon name="AlertTriangle" size={12} className="mr-1" />
+                              Threat
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          <p>{location.city}, {location.country}</p>
+                          <p className="text-xs font-mono">
+                            {location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}
+                          </p>
+                        </div>
+                        <div className="mt-2 flex items-center space-x-2">
+                          <div className={`w-2 h-2 rounded-full ${location.threat ? 'bg-red-400' : 'bg-emerald-400'}`} />
+                          <span className="text-xs">
+                            {location.threat ? 'Suspicious' : 'Clean'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
 
         <TabsContent value="dashboard" className="space-y-6">
           {/* Основные метрики */}
