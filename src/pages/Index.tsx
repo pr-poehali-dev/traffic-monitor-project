@@ -481,7 +481,7 @@ const Index = () => {
                           <div className="flex-1">
                             <h4 className="font-medium">{alert.name}</h4>
                             <p className="text-sm text-muted-foreground">
-                              {alert.condition.replace('_', ' ')} > {alert.threshold}
+                              {alert.condition.replace('_', ' ')} &gt; {alert.threshold}
                             </p>
                             {alert.email && (
                               <p className="text-xs text-muted-foreground font-mono">{alert.email}</p>
